@@ -2,7 +2,7 @@
 Quadcopter Project
 
 
-Hardware:
+Current list of hardware:
   - Teensy 3.6
   - Teensy 3.2
   - MPU9250
