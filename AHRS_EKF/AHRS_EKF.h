@@ -17,8 +17,6 @@ with the resulting orientation estimation.
 #include "Eigen/LU"
 #include "Arduino.h"
 
-//using namespace Eigen;
-
 class AHRS_EKF{
 	public:
 	// Variables
