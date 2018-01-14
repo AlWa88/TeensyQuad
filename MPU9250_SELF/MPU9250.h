@@ -162,6 +162,9 @@ Adjustable parameters related to sensor resolution and sampling frequency.
 #define ZA_OFFSET_H        0x7D
 #define ZA_OFFSET_L        0x7E
 
+#define M_8HZ 0x02
+#define M_100HZ 0x06
+
 // Using the MPU-9250 breakout board, ADO is set to 0
 // Seven-bit device address is 110100 for ADO = 0 and 110101 for ADO = 1
 #define ADO 0
@@ -206,56 +209,33 @@ class MPU9250
 	float selfTestResults[6];
     float gyrBias[3] = {0, 0, 0}, accBias[3] = {0, 0, 0};  // Bias corrections for gyro and accelerometer
 	float magCalibration[3] = {0, 0, 0}, magBias[3] = {0, 0, 0};
+	float aRes, gRes, mRes;
 	
 	// Functions
 	void selfTestMPU9250();
 	void calibrateMPU9250();
 	void calibrateAK8963();
-	
 	void getMres();
     void getGres();
     void getAres();
-	
 	void writeByte(uint8_t, uint8_t, uint8_t);
-    uint8_t readByte(uint8_t, uint8_t);
     void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
+	uint8_t readByte(uint8_t, uint8_t);
 	
+	public:
+	// Variables
 	
-  public:
-    float pitch, yaw, roll;
-    float temperature;   // Stores the real internal chip temperature in Celsius
-    int16_t tempCount;   // Temperature raw count output
-    uint32_t delt_t = 0; // Used to control display output rate
-
-    uint32_t count = 0, sumCount = 0; // used to control display output rate
-    float deltat = 0.0f, sum = 0.0f;  // integration interval for both filter schemes
-    uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
-    uint32_t Now = 0;        // used to calculate integration interval
-
-    int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
-    int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
-    // Scale resolutions per LSB for the sensors
-    float aRes, gRes, mRes;
-    // Variables to hold latest sensor data values
-    float ax, ay, az, gx, gy, gz, mx, my, mz;
-    // Factory mag calibration and mag bias
-    
-
-    
-    // Stores the 16-bit signed accelerometer sensor output
-    int16_t accelCount[3];
-    
-  public:
-    void readAccelData(int16_t *);
-    void readGyroData(int16_t *);
-    void readMagData(int16_t *);
-    int16_t readTempData();
-    
+	// Functions
+    void readAccelData(float*);
+    void readGyroData(float*);
+    void readMagData(float*);
+	void readAll(float*);
+    // void readTempData(int16_t*);
 	void updateTime();
-    byte initAK8963();
-    byte initMPU9250();
+    void initAK8963();
+    void initMPU9250();
+	void printSensorStatus();
     
+};
 
-};  // class MPU9250
-
-#endif // _MPU9250_H_
+#endif
