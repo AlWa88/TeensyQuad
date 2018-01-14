@@ -13,10 +13,12 @@ Adjustable parameters related to sensor resolution and sampling frequency.
 
 /* Public functions */
 /* Initialize MPU9250 and perform selftest and calibration on accelerometer and gyroscope */
-byte MPU9250::initMPU9250(){  
+void MPU9250::initMPU9250(){  
 	// Read the WHO_AM_I register, this is a good test of communication
-	byte c = myIMU.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250); 
-	if (c == 0x71){ // WHO_AM_I should always be 0x68, else connection unavailable
+	byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250); 
+	if (c == 0x71){ // WHO_AM_I should always be 0x68, else connection unavailable	
+		Serial.println("MPU9250 is online...");
+		
 		// Start by performing self test
 		selfTestMPU9250();
 
@@ -77,14 +79,23 @@ byte MPU9250::initMPU9250(){
 		writeByte(MPU9250_ADDRESS, INT_PIN_CFG, 0x22);    
 		writeByte(MPU9250_ADDRESS, INT_ENABLE, 0x01);  // Enable data ready (bit 0) interrupt
 		delay(100);
+		
+		// Update resolutions before finishing initialization procedure
+		getAres();
+		getGres();	
 	}
-	return c;
+	else{
+		Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX);
+		Serial.print(" I should be "); Serial.println(0x71, HEX);
+	}
 }
 
 /* Initialize AK8963 and perform selftest and calibration on magnetometer*/
-byte MPU9250::initAK8963(){
-	byte c = myIMU.readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);
+void MPU9250::initAK8963(){
+	byte c = readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);
 	if (c == 0x48){ // WHO_AM_I should always be 0x68, else connection unavailable
+		Serial.println("AK8963 is online...");
+	
 		// First extract the factory calibration for each magnetometer axis
 		uint8_t rawData[3];  // x/y/z gyro calibration data stored here
 		writeByte(AK8963_ADDRESS, AK8963_CNTL, 0x00); // Power down magnetometer  
@@ -104,31 +115,37 @@ byte MPU9250::initAK8963(){
 		delay(10);
 		
 		// Calibrate the magnetometer
-		calibrateAK8963();
+		//calibrateAK8963();
+		
+		// Update resolutions before finishing initialization procedure
+		getMres();
 	}
-	return c;
+	else{
+		Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(c, HEX);
+		Serial.print(" I should be "); Serial.println(0x48, HEX);
+	}
 }
 
 /* Read accelerometer sensor data */
-void MPU9250::readAccelData(int16_t * destination){
+void MPU9250::readAccelData(float* result){
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
-  destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;  
-  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ; 
+  result[0] = (float)(((int16_t)rawData[0] << 8) | rawData[1]) * aRes;  // Turn the MSB and LSB into a signed 16-bit value
+  result[1] = (float)(((int16_t)rawData[2] << 8) | rawData[3]) * aRes;  
+  result[2] = (float)(((int16_t)rawData[4] << 8) | rawData[5]) * aRes;
 }
 
 /* Read gyroscope sensor data */
-void MPU9250::readGyroData(int16_t * destination){
+void MPU9250::readGyroData(float* result){
   uint8_t rawData[6];  // x/y/z gyro register data stored here
   readBytes(MPU9250_ADDRESS, GYRO_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
-  destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-  destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;  
-  destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ; 
+  result[0] = (float)(((int16_t)rawData[0] << 8) | rawData[1]) * gRes - gyrBias[0];  // Turn the MSB and LSB into a signed 16-bit value
+  result[1] = (float)(((int16_t)rawData[2] << 8) | rawData[3]) * gRes - gyrBias[1];  
+  result[2] = (float)(((int16_t)rawData[4] << 8) | rawData[5]) * gRes - gyrBias[2]; 
 }
 
 /* Read magnetometer sensor data */
-void MPU9250::readMagData(int16_t * destination){
+void MPU9250::readMagData(float* result){
   // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of
   // data acquisition
   uint8_t rawData[7];
@@ -142,20 +159,20 @@ void MPU9250::readMagData(int16_t * destination){
     if(!(c & 0x08))
     {
       // Turn the MSB and LSB into a signed 16-bit value
-      destination[0] = ((int16_t)rawData[1] << 8) | rawData[0];
+      result[0] = (float)(((int16_t)rawData[1] << 8) | rawData[0]) * magCalibration[0] * mRes - magBias[0];
       // Data stored as little Endian 
-      destination[1] = ((int16_t)rawData[3] << 8) | rawData[2];
-      destination[2] = ((int16_t)rawData[5] << 8) | rawData[4];
+      result[1] = (float)(((int16_t)rawData[3] << 8) | rawData[2]) * magCalibration[1] * mRes - magBias[1];
+      result[2] = (float)(((int16_t)rawData[5] << 8) | rawData[4]) * magCalibration[2] * mRes - magBias[2];
     }
   }
 }
 
 /* Read temperature sensor data */
-int16_t MPU9250::readTempData(){
-  uint8_t rawData[2];  // x/y/z gyro register data stored here
-  readBytes(MPU9250_ADDRESS, TEMP_OUT_H, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array 
-  return ((int16_t)rawData[0] << 8) | rawData[1];  // Turn the MSB and LSB into a 16-bit value
-}
+// void MPU9250::readTempData(int16_t* result){
+  // uint8_t rawData[2];  // x/y/z gyro register data stored here
+  // readBytes(MPU9250_ADDRESS, TEMP_OUT_H, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array 
+  // result = ((int16_t)rawData[0] << 8) | rawData[1];  // Turn the MSB and LSB into a 16-bit value
+// }
 
 /* Read all sensor data (excluding temperature data) */
 void MPU9250::readAll(float* result){
@@ -180,9 +197,9 @@ void MPU9250::printSensorStatus(){
 	
 	// Print results from MPU9250 calibration
 	Serial.print("Calibration results acceleration xyz-bias: ");
-	Serial.printf("% 1.4f 1.4f 1.4f\n", accBias[0], accBias[1], accBias[2]);
+	Serial.printf("% 1.4f % 1.4f % 1.4f\n", accBias[0], accBias[1], accBias[2]);
 	Serial.print("Calibration results gyroscope xyz-bias: ");
-	Serial.printf("% 1.4f 1.4f 1.4f\n", gyrBias[0], gyrBias[1], gyrBias[2]);
+	Serial.printf("% 1.4f % 1.4f % 1.4f\n", gyrBias[0], gyrBias[1], gyrBias[2]);
 	
 	// Print results from AK8963 self test
 	Serial.print("X-axis sensitivity adjustment value ");
@@ -489,9 +506,9 @@ void MPU9250::calibrateMPU9250(){
  
 /* Calibration of magnetometer */
 void MPU9250::calibrateAK8963(){
-	uint16_t ii = 0, sample_count = 0;
-	int32_t mag_bias[3]  = {0, 0, 0}, mag_scale[3] = {0, 0, 0};
-	int16_t mag_max[3]  = {0x8000, 0x8000, 0x8000}, mag_min[3]  = {0x7FFF, 0x7FFF, 0x7FFF}, mag_temp[3] = {0, 0, 0};
+	int ii = 0, sample_count = 0;
+	int32_t mag_bias[3]  = {0, 0, 0}; //mag_scale[3] = {0, 0, 0};
+	int16_t mag_max[3]  = {0, 0, 0}, mag_min[3]  = {0, 0, 0}, mag_temp[3] = {0, 0, 0};
 
 	// Make sure resolution has been calculated
 	getMres();
@@ -509,7 +526,25 @@ void MPU9250::calibrateAK8963(){
 	}
 
 	for (ii = 0; ii < sample_count; ii++){
-		readMagDataI(mag_temp);  // Read the mag data
+		
+		// Read magnetometer raw data
+		uint8_t rawData[7];
+		// Wait for magnetometer data ready bit to be set
+		if(readByte(AK8963_ADDRESS, AK8963_ST1) & 0x01)
+		{
+		// Read the six raw data and ST2 registers sequentially into data array
+		readBytes(AK8963_ADDRESS, AK8963_XOUT_L, 7, &rawData[0]);
+		uint8_t c = rawData[6]; // End data read by reading ST2 register
+		// Check if magnetic sensor overflow set, if not then report data
+		if(!(c & 0x08))
+		{
+		  // Turn the MSB and LSB into a signed 16-bit value
+		  mag_temp[0] = ((int16_t)rawData[1] << 8) | rawData[0];
+		  // Data stored as little Endian 
+		  mag_temp[1] = ((int16_t)rawData[3] << 8) | rawData[2];
+		  mag_temp[2] = ((int16_t)rawData[5] << 8) | rawData[4];
+		}
+		}
 
 		for (int jj = 0; jj < 3; jj++){
 			if (mag_temp[jj] > mag_max[jj]){
@@ -521,15 +556,16 @@ void MPU9250::calibrateAK8963(){
 		}
 
 		if (Mmode == M_8HZ){
-			usleep(135000); // At 8 Hz ODR, new mag data is available every 125 ms
+			delay(135); // At 8 Hz ODR, new mag data is available every 125 ms
 		}
 		if (Mmode == M_100HZ){
-			usleep(12000);  // At 100 Hz ODR, new mag data is available every 10 ms
+			delay(12);  // At 100 Hz ODR, new mag data is available every 10 ms
 		}
 	}
 
 	Serial.printf("Mag data collected. 4 seconds put quadrotor back down\n");
-	delay(4000);
+	//delay(4000);
+	printf("Mag factory sensitivity adjustment X: %6.4f Y: %6.4f Z: %6.4f\n", magCalibration[0], magCalibration[1], magCalibration[2]);
 
 	// Get hard iron correction
 	// Get 'average' x mag bias in counts
@@ -546,22 +582,22 @@ void MPU9250::calibrateAK8963(){
 
 	// Get soft iron correction estimate
 	// Get average x axis max chord length in counts
-	mag_scale[0]  = (mag_max[0] - mag_min[0]) / 2;
+	// mag_scale[0]  = (mag_max[0] - mag_min[0]) / 2;
 	// Get average y axis max chord length in counts
-	mag_scale[1]  = (mag_max[1] - mag_min[1]) / 2;
+	// mag_scale[1]  = (mag_max[1] - mag_min[1]) / 2;
 	// Get average z axis max chord length in counts
-	mag_scale[2]  = (mag_max[2] - mag_min[2]) / 2;
+	// mag_scale[2]  = (mag_max[2] - mag_min[2]) / 2;
 
-	float avg_rad = mag_scale[0] + mag_scale[1] + mag_scale[2];
-	avg_rad /= 3.0;
+	// float avg_rad = mag_scale[0] + mag_scale[1] + mag_scale[2];
+	// avg_rad /= 3.0;
 
-	magScale[0] = avg_rad / ((float)mag_scale[0]);
-	magScale[1] = avg_rad / ((float)mag_scale[1]);
-	magScale[2] = avg_rad / ((float)mag_scale[2]);
+	// magScale[0] = avg_rad / ((float)mag_scale[0]);
+	// magScale[1] = avg_rad / ((float)mag_scale[1]);
+	// magScale[2] = avg_rad / ((float)mag_scale[2]);
 
 	printf("AK8963 Mag Calibration done!\n");   
 	printf("Bias [mG] X: %6.4f Y: %6.4f Z: %6.4f\n", magBias[0], magBias[1], magBias[2]);
-	printf("Scale [mG] X: %6.4f Y: %6.4f Z: %6.4f\n", magScale[0], magScale[1], magScale[2]);	   
+	// printf("Scale [mG] X: %6.4f Y: %6.4f Z: %6.4f\n", magScale[0], magScale[1], magScale[2]);	   
 	printf("Mag factory sensitivity adjustment X: %6.4f Y: %6.4f Z: %6.4f\n", magCalibration[0], magCalibration[1], magCalibration[2]);
 
 }
