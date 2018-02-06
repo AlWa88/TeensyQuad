@@ -16,6 +16,9 @@ with the resulting orientation estimation.
 #include "Eigen30.h"
 #include "Eigen/LU"
 #include "Arduino.h"
+#include <math.h>
+
+//using namespace Eigen;
 
 class AHRS_EKF{
 	public:
@@ -23,9 +26,11 @@ class AHRS_EKF{
 	
 	// Functions
 	AHRS_EKF();
-	void updateEKF(float* yMeas, float deltaT);
+	void updateEKF(float* yAccMeas, float* yGyrMeas, float* yMagMeas);
 	void getQuaternions(float* result);
 	void getEulers(float* result);
+	void getEulers2(float* result);
+	void updateTime();
 	
 	private:
 	// Variables
@@ -63,20 +68,18 @@ class AHRS_EKF{
 	Eigen::Vector3f mMag;
 	Eigen::Vector3f vTemp;
 	
-	
-	
 	float ts; // delta t since last measurement
 	float eulerTemp[5]; // Temp variable used for q2euler convertion
 	const int limitCalibration = 100; // desired filter calibration limit of data samples to reach
 	int counterCalibration; // counter for calibration
-
+	uint32_t timerStart = 0, timerStop = 0;
+	float beta = 0.5, alpha = 0.1;
+	
 	// Functions
 	void updateAccelerometer();
 	void updateGyroscope();
 	void updateMagnetometer();
-
-	//void Sq();
-	//void Somega();
+	void qNorm();
 	void initVariables();
 	void print_mtxf(const Eigen::MatrixXf& X);
 };
